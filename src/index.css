@@ -1,0 +1,16 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* In your global CSS file, e.g., index.css */
+
+/* Apply Poppins as the default font for the entire project */
+body {
+    font-family: 'Poppins', sans-serif;
+  }
+  
+  /* Use Roboto for specific elements if needed */
+  h1, h2, h3 {
+    font-family: 'Roboto', sans-serif;
+  }
+  
