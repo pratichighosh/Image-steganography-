@@ -5,7 +5,7 @@ import About from './components/About';
 import ImageEncoder from './components/ImageEncoder';
 import ImageDecoder from './components/ImageDecoder';
 //import steganographyImage from '../src/assets/steganography-blog.webp';
-import './app.css';
+import './App.css';
 
 function App() {
   return (
