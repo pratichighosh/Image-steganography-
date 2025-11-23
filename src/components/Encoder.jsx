@@ -50,52 +50,60 @@ function Encoder() {
 
   const encodeMessage = async () => {
   if (!validateInputs()) return;
-
   setLoading(true);
+
   try {
-    // 1. Load uploaded image onto a canvas
     const img = new Image();
-    img.src = image;               // "image" must hold the uploaded image URL
-    await img.decode();
+    img.src = selectedImage;
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = img.width;
-    canvas.height = img.height;
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
-    ctx.drawImage(img, 0, 0);
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixelData = imageData.data;
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
 
-    // 2. Encrypt message
-    const encrypted = encryptMessage(message, password);
+      // Encrypt message
+      const encrypted = encryptMessage(message, password);
 
-    // 3. Convert encrypted message to binary bits
-    const binary = encrypted
-      .split("")
-      .map((ch) => ch.charCodeAt(0).toString(2).padStart(8, "0"))
-      .join("");
+      // Convert encrypted string to bits
+      let bits = "";
+      for (let i = 0; i < encrypted.length; i++) {
+        const charCode = encrypted.charCodeAt(i);
+        bits += charCode.toString(2).padStart(8, "0");
+      }
 
-    // 4. Encode binary into LSB of image pixels
-    for (let i = 0; i < binary.length; i++) {
-      pixelData[i] = (pixelData[i] & 0xfe) | (binary[i] === "1" ? 1 : 0);
-    }
+      // Check image capacity
+      if (bits.length > pixels.length) {
+        toast.error("Image too small to hide message");
+        setLoading(false);
+        return;
+      }
 
-    ctx.putImageData(imageData, 0, 0);
+      // Hide bits in LSB
+      for (let i = 0; i < bits.length; i++) {
+        pixels[i] = (pixels[i] & 0xFE) | Number(bits[i]);
+      }
 
-    // 5. Export final encoded PNG
-    const encodedImageURL = canvas.toDataURL("image/png");
+      ctx.putImageData(imageData, 0, 0);
 
-    setEncodedImage(encodedImageURL);
-    showNotification("success", "Message encoded successfully!");
+      // Export real PNG
+      const encodedPNG = canvas.toDataURL("image/png");
+      setEncodedImage(encodedPNG);
 
-  } catch (error) {
-    showNotification("error", error.message);
-  } finally {
-    setLoading(false);
+      toast.success("Message encoded successfully!");
+    };
+  } catch {
+    toast.error("Encoding failed");
   }
+
+  setLoading(false);
 };
+
 
   const getPasswordStrength = () => {
     if (password.length >= 12) return { text: 'Very Strong', color: 'text-green-600', bg: 'bg-green-500', width: 'w-full' };
