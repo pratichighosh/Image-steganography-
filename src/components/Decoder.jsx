@@ -12,13 +12,7 @@ function ImageDecoder() {
   const [isDecoding, setIsDecoding] = useState(false);
   const canvasRef = useRef(null);
 
-  useEffect(() => {
-    // Set up a base64 image directly for testing purposes
-    const base64Image = "data:image/png;base64,...."; // Replace with your actual base64 image string
-    const img = new Image();
-    img.onload = () => setSelectedImage(img);
-    img.src = base64Image;
-  }, []);
+  
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { 'image/*': [] },
@@ -36,68 +30,65 @@ function ImageDecoder() {
     }
   });
 
-  const base64ToString = (str) => {
-    return decodeURIComponent(escape(atob(str)));
-  };
+  
 
-  const decodeMessage = () => {
-    if (!selectedImage) {
-      toast.error('Please upload an image');
+  const decodeMessage = async () => {
+  if (!selectedImage) {
+    toast.error('Please upload an image');
+    return;
+  }
+
+  if (!decryptionPassword) {
+    toast.error('Please enter the decryption password');
+    return;
+  }
+
+  setIsDecoding(true);
+
+  try {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = selectedImage.width;
+    canvas.height = selectedImage.height;
+
+    ctx.drawImage(selectedImage, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixelData = imageData.data;
+
+    // 1. Read bits from LSB
+    let bits = "";
+    for (let i = 0; i < pixelData.length; i++) {
+      bits += (pixelData[i] & 1);
+    }
+
+    // 2. Convert bits to characters (8 bits each)
+    let encrypted = "";
+    for (let i = 0; i < bits.length; i += 8) {
+      const byte = bits.slice(i, i + 8);
+      if (byte.length < 8) break;
+      encrypted += String.fromCharCode(parseInt(byte, 2));
+    }
+
+    // 3. Try decryption
+    const decrypted = decryptMessage(encrypted, decryptionPassword);
+
+    if (!decrypted) {
+      toast.error("Incorrect password or corrupted image");
       return;
     }
 
-    if (!decryptionPassword) {
-      toast.error('Please enter the decryption password');
-      return;
-    }
+    setDecodedMessage(decrypted);
+    toast.success("Message decoded successfully!");
 
-    setIsDecoding(true);
+  } catch (error) {
+    toast.error("Decoding failed. Try another image.");
+  }
 
-    // Simulate decoding delay for better UX
-    setTimeout(() => {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      canvas.width = selectedImage.width;
-      canvas.height = selectedImage.height;
+  setIsDecoding(false);
+};
 
-      ctx.drawImage(selectedImage, 0, 0);
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-
-      let binaryMessage = '';
-      let fullMessage = '';
-
-      for (let i = 0; i < data.length; i += 4) {
-        binaryMessage += (data[i] & 1);
-
-        if (binaryMessage.length % 8 === 0) {
-          const char = String.fromCharCode(parseInt(binaryMessage.slice(-8), 2));
-          fullMessage += char;
-
-          if (char === '\0') break;
-        }
-      }
-
-      try {
-        const encodedMessage = fullMessage.replace(/\0/g, '');
-        const encryptedData = JSON.parse(base64ToString(encodedMessage));
-
-        const decryptedMessage = decryptMessage(encryptedData, decryptionPassword);
-
-        if (decryptedMessage) {
-          setDecodedMessage(decryptedMessage);
-          toast.success('Message decoded successfully!');
-        } else {
-          toast.error('Decryption failed. Incorrect password?');
-        }
-      } catch (error) {
-        toast.error('Failed to decode message. Check the image and password.');
-      } finally {
-        setIsDecoding(false);
-      }
-    }, 1000);
-  };
 
   return (
     <div className="space-y-8">

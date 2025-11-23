@@ -49,21 +49,53 @@ function Encoder() {
   };
 
   const encodeMessage = async () => {
-    if (!validateInputs()) return;
+  if (!validateInputs()) return;
 
-    setLoading(true);
-    try {
-      const encryptedData = encryptMessage(message, password);
-      const encodedImageData = `data:image/png;base64,${btoa(encryptedData)}`;
-      
-      showNotification('success', 'Message encoded successfully!');
-      setEncodedImage(encodedImageData);
-    } catch (error) {
-      showNotification('error', error.message);
-    } finally {
-      setLoading(false);
+  setLoading(true);
+  try {
+    // 1. Load uploaded image onto a canvas
+    const img = new Image();
+    img.src = image;               // "image" must hold the uploaded image URL
+    await img.decode();
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = img.width;
+    canvas.height = img.height;
+
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixelData = imageData.data;
+
+    // 2. Encrypt message
+    const encrypted = encryptMessage(message, password);
+
+    // 3. Convert encrypted message to binary bits
+    const binary = encrypted
+      .split("")
+      .map((ch) => ch.charCodeAt(0).toString(2).padStart(8, "0"))
+      .join("");
+
+    // 4. Encode binary into LSB of image pixels
+    for (let i = 0; i < binary.length; i++) {
+      pixelData[i] = (pixelData[i] & 0xfe) | (binary[i] === "1" ? 1 : 0);
     }
-  };
+
+    ctx.putImageData(imageData, 0, 0);
+
+    // 5. Export final encoded PNG
+    const encodedImageURL = canvas.toDataURL("image/png");
+
+    setEncodedImage(encodedImageURL);
+    showNotification("success", "Message encoded successfully!");
+
+  } catch (error) {
+    showNotification("error", error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getPasswordStrength = () => {
     if (password.length >= 12) return { text: 'Very Strong', color: 'text-green-600', bg: 'bg-green-500', width: 'w-full' };
