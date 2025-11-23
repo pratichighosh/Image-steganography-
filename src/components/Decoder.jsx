@@ -1,217 +1,130 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useDropzone } from 'react-dropzone';
-import toast from 'react-hot-toast';
-import { decryptMessage } from '../utils/crypto';
-import { Upload, Lock, FileSearch, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useRef } from "react";
+import { useDropzone } from "react-dropzone";
+import toast from "react-hot-toast";
+import { decryptMessage } from "../utils/crypto";
+import { Upload, Lock, Eye, EyeOff, FileSearch } from "lucide-react";
 
 function ImageDecoder() {
   const [selectedImage, setSelectedImage] = useState(null);
-  const [decryptionPassword, setDecryptionPassword] = useState('');
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [decodedMessage, setDecodedMessage] = useState(null);
-  const [isDecoding, setIsDecoding] = useState(false);
+  const [decodedMessage, setDecodedMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const canvasRef = useRef(null);
 
-  
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: { 'image/*': [] },
-    onDrop: (acceptedFiles) => {
-      const file = acceptedFiles[0];
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: { "image/*": [] },
+    onDrop: (files) => {
       const reader = new FileReader();
-
       reader.onloadend = () => {
         const img = new Image();
         img.onload = () => setSelectedImage(img);
         img.src = reader.result;
       };
-
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(files[0]);
     }
   });
 
-  
+  const decodeMessage = () => {
+    if (!selectedImage) return toast.error("Upload encoded image!");
+    if (!password) return toast.error("Enter password!");
 
-  const decodeMessage = async () => {
-  if (!selectedImage) {
-    toast.error('Please upload an image');
-    return;
-  }
+    setLoading(true);
 
-  if (!decryptionPassword) {
-    toast.error('Please enter the decryption password');
-    return;
-  }
+    setTimeout(() => {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
-  setIsDecoding(true);
+      canvas.width = selectedImage.width;
+      canvas.height = selectedImage.height;
 
-  try {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+      ctx.drawImage(selectedImage, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    canvas.width = selectedImage.width;
-    canvas.height = selectedImage.height;
+      let bits = "";
 
-    ctx.drawImage(selectedImage, 0, 0);
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        bits += imageData.data[i] & 1;
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixelData = imageData.data;
+        if (bits.length % 8 === 0) {
+          const byte = bits.slice(-8);
+          if (byte === "00000000") break;
+        }
+      }
 
-    // 1. Read bits from LSB
-    let bits = "";
-    for (let i = 0; i < pixelData.length; i++) {
-      bits += (pixelData[i] & 1);
-    }
+      let encrypted = "";
+      for (let i = 0; i < bits.length; i += 8) {
+        encrypted += String.fromCharCode(parseInt(bits.slice(i, i + 8), 2));
+      }
 
-    // 2. Convert bits to characters (8 bits each)
-    let encrypted = "";
-    for (let i = 0; i < bits.length; i += 8) {
-      const byte = bits.slice(i, i + 8);
-      if (byte.length < 8) break;
-      encrypted += String.fromCharCode(parseInt(byte, 2));
-    }
+      encrypted = encrypted.replace(/\0/g, "");
 
-    // 3. Try decryption
-    const decrypted = decryptMessage(encrypted, decryptionPassword);
+      const decrypted = decryptMessage(encrypted, password);
 
-    if (!decrypted) {
-      toast.error("Incorrect password or corrupted image");
-      return;
-    }
+      if (!decrypted) {
+        toast.error("Wrong password!");
+      } else {
+        setDecodedMessage(decrypted);
+        toast.success("Message decoded!");
+      }
 
-    setDecodedMessage(decrypted);
-    toast.success("Message decoded successfully!");
-
-  } catch (error) {
-    toast.error("Decoding failed. Try another image.");
-  }
-
-  setIsDecoding(false);
-};
-
+      setLoading(false);
+    }, 1000);
+  };
 
   return (
     <div className="space-y-8">
-      {/* Image Upload Section */}
-      <div className="space-y-3">
-        <label className="flex items-center space-x-2 text-gray-800 font-semibold text-lg">
-          <div className="bg-blue-100 p-2 rounded-lg">
-            <Upload className="w-5 h-5 text-blue-600" />
-          </div>
-          <span>Upload Encoded Image</span>
-        </label>
-        <div
-          {...getRootProps()}
-          className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 ${
-            isDragActive
-              ? 'border-blue-500 bg-blue-50 scale-[1.02]'
-              : selectedImage
-              ? 'border-blue-300 bg-blue-50/50'
-              : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50/30'
-          }`}
+      {/* Image upload */}
+      <div {...getRootProps()} className="p-6 border-2 border-dashed rounded-xl text-center cursor-pointer">
+        <input {...getInputProps()} />
+        {selectedImage ? (
+          <img src={selectedImage.src} className="max-h-80 mx-auto rounded-lg" />
+        ) : (
+          <Upload className="mx-auto w-10 h-10 text-blue-600" />
+        )}
+      </div>
+
+      {/* Password */}
+      <div className="relative">
+        <input
+          type={showPassword ? "text" : "password"}
+          className="w-full p-4 pr-12 border rounded-xl"
+          placeholder="Enter password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button
+          type="button"
+          onClick={() => setShowPassword(!showPassword)}
+          className="absolute right-4 top-1/2 -translate-y-1/2"
         >
-          <input {...getInputProps()} />
-          {selectedImage ? (
-            <div className="relative group">
-              <img
-                src={selectedImage.src}
-                alt="Selected"
-                className="max-h-80 mx-auto rounded-xl shadow-lg"
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-all duration-300 flex items-center justify-center">
-                <FileSearch className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              </div>
-            </div>
-          ) : (
-            <div className="py-12">
-              <div className="mx-auto w-20 h-20 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-full flex items-center justify-center mb-4">
-                <Upload className="w-10 h-10 text-blue-600" />
-              </div>
-              <p className="text-gray-700 font-medium mb-2">
-                {isDragActive ? 'Drop the image here' : 'Drag & drop an encoded image'}
-              </p>
-              <p className="text-sm text-gray-500">or click to select from your files</p>
-            </div>
-          )}
-        </div>
+          {showPassword ? <EyeOff /> : <Eye />}
+        </button>
       </div>
 
-      {/* Password Input Section */}
-      <div className="space-y-3">
-        <label className="flex items-center space-x-2 text-gray-800 font-semibold text-lg">
-          <div className="bg-blue-100 p-2 rounded-lg">
-            <Lock className="w-5 h-5 text-blue-600" />
-          </div>
-          <span>Decryption Password</span>
-        </label>
-        <div className="relative">
-          <input
-            type={showPassword ? "text" : "password"}
-            placeholder="Enter the decryption password"
-            value={decryptionPassword}
-            onChange={(e) => setDecryptionPassword(e.target.value)}
-            className="w-full p-4 pr-12 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-200 focus:border-blue-400 transition-all duration-300 text-gray-700 placeholder-gray-400"
-            onKeyPress={(e) => e.key === 'Enter' && decodeMessage()}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-          </button>
-        </div>
-        <p className="text-sm text-gray-500 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4" />
-          Use the same password that was used to encode the message
-        </p>
-      </div>
-
-      {/* Decode Button */}
       <button
         onClick={decodeMessage}
-        disabled={isDecoding}
-        className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-4 rounded-2xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-300 disabled:from-blue-400 disabled:to-cyan-400 disabled:cursor-not-allowed flex items-center justify-center space-x-3 font-semibold text-lg shadow-lg shadow-blue-500/50 hover:shadow-xl hover:shadow-blue-500/60 transform hover:scale-[1.02]"
+        disabled={loading}
+        className="w-full bg-blue-600 text-white py-3 rounded-xl flex items-center justify-center gap-2"
       >
-        {isDecoding ? (
-          <>
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-            <span>Decoding Message...</span>
-          </>
+        {loading ? (
+          <> Decoding... </>
         ) : (
           <>
-            <FileSearch className="w-5 h-5" />
-            <span>Decode & Decrypt Message</span>
+            <FileSearch /> Decode Message
           </>
         )}
       </button>
 
-      {/* Decoded Message Display */}
       {decodedMessage && (
-        <div className="space-y-4 p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border-2 border-green-200 shadow-lg animate-fade-in">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="bg-green-500 p-2 rounded-full">
-              <CheckCircle className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="font-bold text-green-800 text-xl">Message Decoded Successfully!</h3>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-green-100">
-            <p className="text-sm text-green-700 font-medium mb-3">Secret Message:</p>
-            <p className="text-gray-800 text-lg leading-relaxed whitespace-pre-wrap break-words">
-              {decodedMessage}
-            </p>
-          </div>
-          <div className="flex items-start gap-2 text-sm text-green-700 bg-green-100 p-3 rounded-lg">
-            <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <p>This message was successfully decrypted using your password.</p>
-          </div>
+        <div className="p-4 bg-green-100 border rounded-xl">
+          <p className="font-bold">Decoded Message:</p>
+          <p>{decodedMessage}</p>
         </div>
       )}
 
-      <canvas
-        ref={canvasRef}
-        style={{ display: 'none' }}
-      />
+      <canvas ref={canvasRef} style={{ display: "none" }} />
     </div>
   );
 }
